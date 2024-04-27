@@ -37,7 +37,7 @@ OBJDIR = obj
 ifeq ($(USE_BREW),1)
 	INCLUDES += -I$(BREW_PREFIX)/include
 	LDLIBS += -L$(BREW_PREFIX)/lib
-	PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(BREW_PREFIX)/lib/pkgconfig:$(BREW_PREFIX)/opt/qt/lib/pkgconfig:$(BREW_PREFIX)/opt/qt5/lib/pkgconfig
+	PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(BREW_PREFIX)/lib/pkgconfig:$(BREW_PREFIX)/opt/qt@5/lib/pkgconfig:$(BREW_PREFIX)/opt/qt@5/lib/pkgconfig
 endif
 
 ifeq ($(USE_MACPORTS),1)
@@ -281,16 +281,16 @@ endif
 
 ## Python3 (optional)
 ifneq ($(SKIPPYTHON),1)
-    PYTHONINCLUDES = $(shell $(PKG_CONFIG_ENV) pkg-config --cflags python3 2>/dev/null)
-    PYTHONLDLIBS = $(shell $(PKG_CONFIG_ENV) pkg-config --libs python3 2>/dev/null)
+# since python3.8, applications willing to embed python must use -embed:
+    PYTHONINCLUDES = $(shell $(PKG_CONFIG_ENV) pkg-config --cflags python3-embed 2>/dev/null)
+    PYTHONLDLIBS = $(shell $(PKG_CONFIG_ENV) pkg-config --libs python3-embed 2>/dev/null)
     ifneq ($(PYTHONLDLIBS),)
         PYTHONLIBLD = $(PYTHONLDLIBS)
         PYTHONLIBINC = $(subst -I,-isystem ,$(PYTHONINCLUDES))
         PYTHON_FOUND = 1
     else
-        # since python3.8, applications willing to embed python must use -embed:
-        PYTHONINCLUDES = $(shell $(PKG_CONFIG_ENV) pkg-config --cflags python3-embed 2>/dev/null)
-        PYTHONLDLIBS = $(shell $(PKG_CONFIG_ENV) pkg-config --libs python3-embed 2>/dev/null)
+        PYTHONINCLUDES = $(shell $(PKG_CONFIG_ENV) pkg-config --cflags python3 2>/dev/null)
+        PYTHONLDLIBS = $(shell $(PKG_CONFIG_ENV) pkg-config --libs python3 2>/dev/null)
         ifneq ($(PYTHONLDLIBS),)
             PYTHONLIBLD = $(PYTHONLDLIBS)
             PYTHONLIBINC = $(subst -I,-isystem ,$(PYTHONINCLUDES))

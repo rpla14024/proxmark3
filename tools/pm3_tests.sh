@@ -262,7 +262,7 @@ while true; do
       if ! CheckExecute "findbits test"                    "tools/findbits.py 73 0110010101110011" "Match at bit 9: 011001010"; then break; fi
       if ! CheckExecute "findbits_test test"               "tools/findbits_test.py 2>&1" "OK"; then break; fi
       if ! CheckExecute "pm3_eml_mfd test"                 "tools/pm3_eml_mfd_test.py 2>&1" "OK"; then break; fi
-      if ! CheckExecute "recover_pk test"                  "tools/recover_pk.py selftests 2>&1" "Tests:.*\[OK\]"; then break; fi
+      if ! CheckExecute "recover_pk test"                  "tools/recover_pk.py selftests 2>&1" "Tests:.*\(.*ok.*"; then break; fi
       if ! CheckExecute "mkversion create test"            "tools/mkversion.sh --short" 'Iceman/'; then break; fi
     fi
     if $TESTALL || $TESTBOOTROM; then
@@ -414,6 +414,7 @@ while true; do
       if ! CheckExecute "nfc decode test - signature"    "$CLIENTBIN -c 'nfc decode -d 03FF010194113870696C65742E65653A656B616172743A3266195F26063132303832325904202020205F28033233335F2701316E1B5A13333038363439303039303030323636343030355304EBF2CE704103000000AC536967010200803A2448FCA7D354A654A81BD021150D1A152D1DF4D7A55D2B771F12F094EAB6E5E10F2617A2F8DAD4FD38AFF8EA39B71C19BD42618CDA86EE7E144636C8E0E7CFC4096E19C3680E09C78A0CDBC05DA2D698E551D5D709717655E56FE3676880B897D2C70DF5F06ECE07C71435255144F8EE41AF110E7B180DA0E6C22FB8FDEF61800025687474703A2F2F70696C65742E65652F6372742F33303836343930302D303030312E637274FE'" "30864900-0001.crt"; then break; fi
 
       echo -e "\n${C_BLUE}Testing LF:${C_NC}"
+      if ! CheckExecute "lf hitag2 test"        "$CLIENTBIN -c 'lf hitag selftest'" "Tests \( ok"; then break; fi
       if ! CheckExecute "lf cotag demod test"   "$CLIENTBIN -c 'data load -f traces/lf_cotag_220_8331.pm3; data norm; data cthreshold -u 50 -d -20; data envelope; data raw --ar -c 272; lf cotag demod'" \
                                                                      "COTAG Found: FC 220, CN: 8331 Raw: FFB841170363FFFE00001E7F00000000"; then break; fi
       if ! CheckExecute "lf AWID test"          "$CLIENTBIN -c 'data load -f traces/lf_AWID-15-259.pm3;lf search -1'" "AWID ID found"; then break; fi
@@ -528,13 +529,13 @@ while true; do
       if ! CheckExecute "hf mf offline text"               "$CLIENTBIN -c 'hf mf'" "content from tag dump file"; then break; fi
       if ! CheckExecute slow retry ignore "hf mf hardnested long test"  "$CLIENTBIN -c 'hf mf hardnested -t --tk 000000000000'" "found:"; then break; fi
       if ! CheckExecute slow "hf iclass loclass long test" "$CLIENTBIN -c 'hf iclass loclass --long'" "verified \( ok \)"; then break; fi
-      if ! CheckExecute slow "emv long test"               "$CLIENTBIN -c 'emv test -l'" "Test\(s\) \[ ok"; then break; fi
+      if ! CheckExecute slow "emv long test"               "$CLIENTBIN -c 'emv test -l'" "Tests \( ok"; then break; fi
       if ! CheckExecute "hf iclass lookup test"            "$CLIENTBIN -c 'hf iclass lookup --csn 9655a400f8ff12e0 --epurse f0ffffffffffffff --macs 0000000089cb984b -f $DICPATH/iclass_default_keys.dic'" \
                                                                 "valid key AE A6 84 A6 DA B2 32 78"; then break; fi
       if ! CheckExecute "hf iclass loclass test"         "$CLIENTBIN -c 'hf iclass loclass --test'" "key diversification \( ok \)"; then break; fi
-      if ! CheckExecute "emv test"                       "$CLIENTBIN -c 'emv test'" "Test\(s\) \[ ok"; then break; fi
-      if ! CheckExecute "hf cipurse test"                "$CLIENTBIN -c 'hf cipurse test'" "Tests \[ ok"; then break; fi
-      if ! CheckExecute "hf mfdes test"                  "$CLIENTBIN -c 'hf mfdes test'"   "Tests \[ ok"; then break; fi
+      if ! CheckExecute "emv test"                       "$CLIENTBIN -c 'emv test'" "Tests \( ok"; then break; fi
+      if ! CheckExecute "hf cipurse test"                "$CLIENTBIN -c 'hf cipurse test'" "Tests \( ok"; then break; fi
+      if ! CheckExecute "hf mfdes test"                  "$CLIENTBIN -c 'hf mfdes test'"   "Tests \( ok"; then break; fi
       if ! CheckExecute "hf waveshare load"              "$CLIENTBIN -c 'hf waveshare load -m 6 -f tools/lena.bmp -s dither.bmp' && echo '34ff55fe7257876acf30dae00eb0e439 dither.bmp' | md5sum -c" "dither.bmp: OK"; then break; fi
     fi
   echo -e "\n------------------------------------------------------------"

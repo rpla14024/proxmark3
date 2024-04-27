@@ -122,6 +122,23 @@ static const productName_t uidmapping[] = {
     { 0xE002080000000000LL, 24, "ST Microelectronics; LRI2K   [IC id = 08]"},
     { 0xE0020A0000000000LL, 24, "ST Microelectronics; LRIS2K  [IC id = 10]"},
     { 0xE002440000000000LL, 24, "ST Microelectronics; LRIS64K [IC id = 68]"},
+    { 0xe002230000000000LL, 24, "ST Microelectronics; ST25TV02K"},
+    { 0xe002230000000000LL, 24, "ST Microelectronics; ST25TV512"},
+    { 0xe002080000000000LL, 24, "ST Microelectronics; ST25TV02KC"},
+    { 0xe002080000000000LL, 24, "ST Microelectronics; ST25TV512C"},
+    { 0xe002350000000000LL, 24, "ST Microelectronics; ST25TV04K-P"},
+    { 0xe002480000000000LL, 24, "ST Microelectronics; ST25TV16K"},
+    { 0xe002480000000000LL, 24, "ST Microelectronics; ST25TV64K"},
+
+/*
+ST25TV02K    0xe0 02 23
+ST25TV512    0xe0 02 23
+ST25TV02KC    0xe00208
+ST25TV512C    0xe00208
+ST25TV04K-P    0xe00235
+ST25TV16K    0xe00248
+ST25TV64K    0xe00248
+*/
 
     { 0xE003000000000000LL, 16, "Hitachi, Ltd Japan" },
 
@@ -267,14 +284,16 @@ static int nxp_15693_print_signature(uint8_t *uid, uint8_t *signature) {
 
 #define PUBLIC_ECDA_KEYLEN 33
     const ecdsa_publickey_t nxp_15693_public_keys[] = {
-        {"NXP MIFARE Classic MFC1C14_x",       "044F6D3F294DEA5737F0F46FFEE88A356EED95695DD7E0C27A591E6F6F65962BAF"},
-        {"Manufacturer MIFARE Classic / QL88", "046F70AC557F5461CE5052C8E4A7838C11C7A236797E8A0730A101837C004039C2"},
-        {"NXP ICODE DNA, ICODE SLIX2",         "048878A2A2D3EEC336B4F261A082BD71F9BE11C4E2E896648B32EFA59CEA6E59F0"},
-        {"NXP Public key",                     "04A748B6A632FBEE2C0897702B33BEA1C074998E17B84ACA04FF267E5D2C91F6DC"},
-        {"NXP Ultralight Ev1",                 "0490933BDCD6E99B4E255E3DA55389A827564E11718E017292FAF23226A96614B8"},
-        {"NXP NTAG21x (2013)",                 "04494E1A386D3D3CFE3DC10E5DE68A499B1C202DB5B132393E89ED19FE5BE8BC61"},
-        {"MIKRON Public key",                  "04f971eda742a4a80d32dcf6a814a707cc3dc396d35902f72929fdcd698b3468f2"},
-        {"VivoKey Spark1 Public key",          "04d64bb732c0d214e7ec580736acf847284b502c25c0f7f2fa86aace1dada4387a"},
+        {"NXP MIFARE Classic MFC1C14_x",   "044F6D3F294DEA5737F0F46FFEE88A356EED95695DD7E0C27A591E6F6F65962BAF"},
+        {"MIFARE Classic / QL88",          "046F70AC557F5461CE5052C8E4A7838C11C7A236797E8A0730A101837C004039C2"},
+        {"NXP ICODE DNA, ICODE SLIX2",     "048878A2A2D3EEC336B4F261A082BD71F9BE11C4E2E896648B32EFA59CEA6E59F0"},
+        {"NXP Public key",                 "04A748B6A632FBEE2C0897702B33BEA1C074998E17B84ACA04FF267E5D2C91F6DC"},
+        {"NXP Ultralight Ev1",             "0490933BDCD6E99B4E255E3DA55389A827564E11718E017292FAF23226A96614B8"},
+        {"NXP NTAG21x (2013)",             "04494E1A386D3D3CFE3DC10E5DE68A499B1C202DB5B132393E89ED19FE5BE8BC61"},
+        {"MIKRON Public key",              "04F971EDA742A4A80D32DCF6A814A707CC3DC396D35902F72929FDCD698B3468F2"},
+        {"VivoKey Spark1 Public key",      "04D64BB732C0D214E7EC580736ACF847284B502C25C0F7F2FA86AACE1DADA4387A"},
+        {"TruST25 (ST) key 01?",           "041D92163650161A2548D33881C235D0FB2315C2C31A442F23C87ACF14497C0CBA"},
+        {"TruST25 (ST) key 04?",           "04101E188A8B4CDDBC62D5BC3E0E6850F0C2730E744B79765A0E079907FBDB01BC"},
     };
     /*
         uint8_t nxp_15693_public_keys[][PUBLIC_ECDA_KEYLEN] = {
@@ -353,7 +372,6 @@ static int nxp_15693_print_signature(uint8_t *uid, uint8_t *signature) {
             reason = 3;
             break;
         }
-
 
         // try with sha256
         res = ecdsa_signature_r_s_verify(MBEDTLS_ECP_DP_SECP128R1, key, revuid, sizeof(revuid), revsign, sizeof(revsign), true);
@@ -2735,11 +2753,14 @@ static int CmdHF15CSetUID(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hf 15 csetuid",
                   "Set UID for magic Chinese card (only works with such cards)\n",
-                  "hf 15 csetuid -u E011223344556677");
+                  "hf 15 csetuid -u E011223344556677       -> use gen1 command\n"
+                  "hf 15 csetuid -u E011223344556677 --v2  -> use gen2 command"
+                 );
 
     void *argtable[] = {
         arg_param_begin,
         arg_str1("u", "uid", "<hex>", "UID, 8 hex bytes"),
+        arg_lit0("2", "v2", "Use gen2 magic command"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -2750,6 +2771,7 @@ static int CmdHF15CSetUID(const char *Cmd) {
 
     int uidlen = 0;
     CLIGetHexWithReturn(ctx, 1, payload.uid, &uidlen);
+    bool use_v2 = arg_get_lit(ctx, 2);
     CLIParserFree(ctx);
 
     if (uidlen != HF15_UID_LENGTH) {
@@ -2775,8 +2797,14 @@ static int CmdHF15CSetUID(const char *Cmd) {
     PrintAndLogEx(INFO, "Writing...");
     PacketResponseNG resp;
     clearCommandBuffer();
-    SendCommandNG(CMD_HF_ISO15693_CSETUID, (uint8_t *)&payload, sizeof(payload));
-    if (WaitForResponseTimeout(CMD_HF_ISO15693_CSETUID, &resp, 2000) == false) {
+
+    uint16_t cmd = CMD_HF_ISO15693_CSETUID;
+    if (use_v2) {
+        cmd = CMD_HF_ISO15693_CSETUID_V2;
+    }
+
+    SendCommandNG(cmd, (uint8_t *)&payload, sizeof(payload));
+    if (WaitForResponseTimeout(cmd, &resp, 2000) == false) {
         PrintAndLogEx(WARNING, "timeout while waiting for reply");
         DropField();
         return PM3_ESOFT;

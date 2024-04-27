@@ -56,6 +56,14 @@
 #define ST25_SIZE_2K     4
 #define ST25_SIZE_4K     5
 
+
+typedef struct {
+    const char *desc;
+    const char *apdu;
+    const uint8_t apdulen;
+} transport_14b_apdu_t;
+
+
 // iso14b apdu input frame length
 static uint16_t apdu_frame_length = 0;
 //static uint16_t ats_fsc[] = {16, 24, 32, 40, 48, 64, 96, 128, 256};
@@ -379,24 +387,34 @@ static bool get_14b_UID(uint8_t *d, iso14b_type_t *found_type) {
  * filename must match '^hf-14b-[0-9A-F]{16}'
  */
 uint8_t *get_uid_from_filename(const char *filename) {
-    static uint8_t uid[8]  ;
-    memset(uid, 0, 8) ;
-    char uidinhex[17] ;
-    if (strlen(filename) < 23 || strncmp(filename, "hf-14b-", 7)) {
+
+    static uint8_t uid[8];
+    memset(uid, 0, 8);
+
+    if (strlen(filename) < 23) {
         PrintAndLogEx(ERR, "can't get uid from filename '%s'. Expected format is hf-14b-<uid>...", filename);
-        return uid ;
+        return uid;
     }
+
+    char *found = strstr(filename, "hf-14b-");
+    if (found == NULL) {
+        PrintAndLogEx(ERR, "can't get uid from filename '%s'. Expected format is hf-14b-<uid>...", filename);
+        return uid;
+    }
+
     // extract uid part from filename
-    strncpy(uidinhex, filename + 7, 16) ;
-    uidinhex[16] = '\0' ;
+    char uidinhex[17] = {0};    
+    strncpy(uidinhex, found + 7, 16);
+
+    uidinhex[16] = '\0';
     int len = hex_to_bytes(uidinhex, uid, 8);
-    if (len == 8)
+    if (len == 8) {
         return SwapEndian64(uid, 8, 8);
-    else {
+    } else {
         PrintAndLogEx(ERR, "get_uid_from_filename failed: hex_to_bytes returned %d", len);
         memset(uid, 0, 8);
     }
-    return uid ;
+    return uid;
 }
 
 // print full atqb info
@@ -1485,13 +1503,15 @@ static int CmdHF14BReader(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
+        arg_lit0(NULL, "plot", "show anticollision signal trace in plot window"),
         arg_lit0("v", "verbose", "verbose output"),
         arg_lit0("@", NULL, "optional - continuous reader mode"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
-    bool verbose = arg_get_lit(ctx, 1);
-    bool cm = arg_get_lit(ctx, 2);
+    bool read_plot = arg_get_lit(ctx, 1);
+    bool verbose = arg_get_lit(ctx, 2);
+    bool cm = arg_get_lit(ctx, 3);
     CLIParserFree(ctx);
 
     if (cm) {
@@ -1500,7 +1520,7 @@ static int CmdHF14BReader(const char *Cmd) {
 
     clear_trace_14b();
 
-    return readHF14B(cm, verbose);
+    return readHF14B(cm, verbose, read_plot);
 }
 
 // Read SRI512|SRIX4K block
@@ -2463,11 +2483,20 @@ static int CmdHF14BAPDU(const char *Cmd) {
     }
 
     PrintAndLogEx(INFO, "<<<< %s", sprint_hex(data, datalen));
-    PrintAndLogEx(SUCCESS, "APDU response: " _YELLOW_("%02x %02x") " - %s"
-                  , data[datalen - 2]
-                  , data[datalen - 1]
-                  , GetAPDUCodeDescription(data[datalen - 2], data[datalen - 1])
-                 );
+    uint16_t sw = get_sw(data, datalen);
+    if (sw != ISO7816_OK) {
+        PrintAndLogEx(SUCCESS, "APDU response: " _YELLOW_("%02x %02x") " - %s"
+                , data[datalen - 2]
+                , data[datalen - 1]
+                , GetAPDUCodeDescription(data[datalen - 2], data[datalen - 1])
+            );
+    } else {
+        PrintAndLogEx(SUCCESS, "APDU response: " _GREEN_("%02x %02x") " - %s"
+                , data[datalen - 2]
+                , data[datalen - 1]
+                , GetAPDUCodeDescription(data[datalen - 2], data[datalen - 1])
+            );
+    }
 
     // TLV decoder
     if (decode_TLV && datalen > 4) {
@@ -2643,24 +2672,232 @@ static int CmdHF14BView(const char *Cmd) {
     return PM3_SUCCESS;
 }
 
+static int CmdHF14BCalypsoRead(const char *Cmd) {
+
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "hf 14b calypso",
+                  "Reads out the contents of a ISO14443B Calypso card\n",
+                  "hf 14b calypso"
+                 );
+    void *argtable[] = {
+        arg_param_begin,
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
+    CLIParserFree(ctx);
+
+    transport_14b_apdu_t cmds[] = {
+        {"01.Select ICC file",     "\x94\xa4\x08\x00\x04\x3f\x00\x00\x02", 9},
+        {"02.ICC",                 "\x94\xb2\x01\x04\x1d", 5},
+        {"03.Select EnvHol file",  "\x94\xa4\x08\x00\x04\x20\x00\x20\x01", 9},
+        {"04.EnvHol1",             "\x94\xb2\x01\x04\x1d", 5},
+        {"05.Select EvLog file",   "\x94\xa4\x08\x00\x04\x20\x00\x20\x10", 9},
+        {"06.EvLog1",              "\x94\xb2\x01\x04\x1d", 5},
+        {"07.EvLog2",              "\x94\xb2\x02\x04\x1d", 5},
+        {"08.EvLog3",              "\x94\xb2\x03\x04\x1d", 5},
+        {"09.Select ConList file", "\x94\xa4\x08\x00\x04\x20\x00\x20\x50", 9},
+        {"10.ConList",             "\x94\xb2\x01\x04\x1d", 5},
+        {"11.Select Contra file",  "\x94\xa4\x08\x00\x04\x20\x00\x20\x20", 9},
+        {"12.Contra1",             "\x94\xb2\x01\x04\x1d", 5},
+        {"13.Contra2",             "\x94\xb2\x02\x04\x1d", 5},
+        {"14.Contra3",             "\x94\xb2\x03\x04\x1d", 5},
+        {"15.Contra4",             "\x94\xb2\x04\x04\x1d", 5},
+        {"16.Select Counter file", "\x94\xa4\x08\x00\x04\x20\x00\x20\x69", 9},
+        {"17.Counter",             "\x94\xb2\x01\x04\x1d", 5},
+        {"18.Select SpecEv file",  "\x94\xa4\x08\x00\x04\x20\x00\x20\x40", 9},
+        {"19.SpecEv1",             "\x94\xb2\x01\x04\x1d", 5},
+    };
+
+/*
+local CLA = '94'
+local _calypso_cmds = {
+
+-- Break down of command bytes:
+--  A4 = select
+--  Master File  3F00
+--  0x3F = master file
+--  0x00 = master file id, is constant to 0x00.
+
+--  DF Dedicated File  38nn
+--  can be seen as directories
+--  0x38
+--  0xNN  id
+--  ["01.Select ICC file"] = '0294 a4 080004 3f00 0002',
+
+--  EF Elementary File
+--  EF1 Pin file
+--  EF2 Key file
+--  Grey Lock file
+--  Electronic deposit file
+--  Electronic Purse file
+--  Electronic Transaction log file
+*/
+    bool activate_field = true;
+    bool leave_signal_on = true;
+    uint8_t response[PM3_CMD_DATA_SIZE] = { 0x00 };
+
+    for (int i = 0; i < ARRAYLEN(cmds); i++) {
+
+        int user_timeout = -1;
+        int resplen = 0;
+        int res = exchange_14b_apdu(
+                        (uint8_t*)cmds[i].apdu,
+                        cmds[i].apdulen,
+                        activate_field,
+                        leave_signal_on,
+                        response,
+                        PM3_CMD_DATA_SIZE,
+                        &resplen,
+                        user_timeout
+                    );
+
+        if (res != PM3_SUCCESS) {
+            PrintAndLogEx(FAILED, "sending command failed, aborting!");
+            switch_off_field_14b();
+            return res;
+        }
+
+        uint16_t sw = get_sw(response, resplen);
+        if (sw != ISO7816_OK) {
+            PrintAndLogEx(ERR, "Sending command failed (%04x - %s).", sw, GetAPDUCodeDescription(sw >> 8, sw & 0xff));
+            switch_off_field_14b();
+            return PM3_ESOFT;
+        }
+
+        PrintAndLogEx(INFO, "%s - %s", cmds[i].desc, sprint_hex(response, resplen));
+        activate_field = false;
+    }
+
+    switch_off_field_14b();
+    return PM3_SUCCESS;
+}
+
+static int CmdHF14BMobibRead(const char *Cmd) {
+
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "hf 14b mobib",
+                  "Reads out the contents of a ISO14443B Mobib card\n",
+                  "hf 14b mobib"
+                 );
+    void *argtable[] = {
+        arg_param_begin,
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
+    CLIParserFree(ctx);
+
+    transport_14b_apdu_t cmds[] = {
+        {"01.SELECT AID 1TIC.ICA",   "\x00\xa4\x04\x00\x08\x31\x54\x49\x43\x2e\x49\x43\x41", 13},
+        {"02.Select ICC file a",     "\x00\xa4\x00\x00\x02\x3f\x00", 7},
+        {"03.Select ICC file b",     "\x00\xa4\x00\x00\x02\x00\x02", 7},
+        {"04.ICC",                   "\x00\xb2\x01\x04\x1d", 5},
+        {"05.Select Holder file",    "\x00\xa4\x00\x00\x02\x3f\x1c", 7},
+        {"06.Holder1",               "\x00\xb2\x01\x04\x1d", 5},
+        {"07.Holder2",               "\x00\xb2\x02\x04\x1d", 5},
+        {"08.Select EnvHol file a",  "\x00\xa4\x00\x00\x00", 5},
+        {"09.Select EnvHol file b",  "\x00\xa4\x00\x00\x02\x20\x00", 7},
+        {"10.Select EnvHol file c",  "\x00\xa4\x00\x00\x02\x20\x01", 7},
+        {"11.EnvHol1",               "\x00\xb2\x01\x04\x1D", 5},
+        {"11.EnvHol2",               "\x00\xb2\x02\x04\x1D", 5},
+        {"12.Select EvLog file",     "\x00\xa4\x00\x00\x02\x20\x10", 7},
+        {"13.EvLog1",                "\x00\xb2\x01\x04\x1D", 5},
+        {"14.EvLog2",                "\x00\xb2\x02\x04\x1D", 5},
+        {"15.EvLog3",                "\x00\xb2\x03\x04\x1D", 5},
+        {"16.Select ConList file",   "\x00\xa4\x00\x00\x02\x20\x50", 7},
+        {"17.ConList",               "\x00\xb2\x01\x04\x1D", 5},
+        {"18.Select Contra file",    "\x00\xa4\x00\x00\x02\x20\x20", 7},
+        {"19.Contra1",               "\x00\xb2\x01\x04\x1D", 5},
+        {"20.Contra2",               "\x00\xb2\x02\x04\x1D", 5},
+        {"21.Contra3",               "\x00\xb2\x03\x04\x1D", 5},
+        {"22.Contra4",               "\x00\xb2\x04\x04\x1D", 5},
+        {"23.Contra5",               "\x00\xb2\x05\x04\x1D", 5},
+        {"24.Contra6",               "\x00\xb2\x06\x04\x1D", 5},
+        {"25.Contra7",               "\x00\xb2\x07\x04\x1D", 5},
+        {"26.Contra8",               "\x00\xb2\x08\x04\x1D", 5},
+        {"27.Contra9",               "\x00\xb2\x09\x04\x1D", 5},
+        {"28.ContraA",               "\x00\xb2\x0a\x04\x1D", 5},
+        {"29.ContraB",               "\x00\xb2\x0b\x04\x1D", 5},
+        {"30.ContraC",               "\x00\xb2\x0c\x04\x1D", 5},
+        {"31.Select Counter file",   "\x00\xa4\x00\x00\x02\x20\x69", 7},
+        {"32.Counter",               "\x00\xb2\x01\x04\x1D", 5},
+        {"33.Select LoadLog file a", "\x00\xa4\x00\x00\x00", 5},
+        {"34.Select LoadLog file b", "\x00\xa4\x00\x00\x02\x10\x00", 7},
+        {"35.Select LoadLog file c", "\x00\xa4\x00\x00\x02\x10\x14", 7},
+        {"36.LoadLog",               "\x00\xb2\x01\x04\x1D", 5},
+        {"37.Select Purcha file",    "\x00\xa4\x00\x00\x02\x10\x15", 7},
+        {"38.Purcha1",               "\x00\xb2\x01\x04\x1D", 5},
+        {"39.Purcha2",               "\x00\xb2\x02\x04\x1D", 5},
+        {"40.Purcha3",               "\x00\xb2\x03\x04\x1D", 5},
+        {"41.Select SpecEv file a",  "\x00\xa4\x00\x00\x00", 5},
+        {"42.Select SpecEv file b",  "\x00\xa4\x00\x00\x02\x20\x00", 7},
+        {"43.Select SpecEv file c",  "\x00\xa4\x00\x00\x02\x20\x40", 7},
+        {"44.SpecEv1",               "\x00\xb2\x01\x04\x1D", 5},
+        {"45.SpecEv2",               "\x00\xb2\x02\x04\x1D", 5},
+        {"46.SpecEv3",               "\x00\xb2\x03\x04\x1D", 5},
+        {"47.SpecEv4",               "\x00\xb2\x04\x04\x1d", 5},
+    };
+
+    bool activate_field = true;
+    bool leave_signal_on = true;
+    uint8_t response[PM3_CMD_DATA_SIZE] = { 0x00 };
+
+    for (int i = 0; i < ARRAYLEN(cmds); i++) {
+
+        int user_timeout = -1;
+        int resplen = 0;
+        int res = exchange_14b_apdu(
+                        (uint8_t*)cmds[i].apdu,
+                        cmds[i].apdulen,
+                        activate_field,
+                        leave_signal_on,
+                        response,
+                        PM3_CMD_DATA_SIZE,
+                        &resplen,
+                        user_timeout
+                    );
+
+        if (res != PM3_SUCCESS) {
+            PrintAndLogEx(FAILED, "sending command failed, aborting!");
+            switch_off_field_14b();
+            return res;
+        }
+
+        uint16_t sw = get_sw(response, resplen);
+        if (sw != ISO7816_OK) {
+            PrintAndLogEx(ERR, "Sending command failed (%04x - %s).", sw, GetAPDUCodeDescription(sw >> 8, sw & 0xff));
+            switch_off_field_14b();
+            return PM3_ESOFT;
+        }
+
+        PrintAndLogEx(INFO, "%s - %s", cmds[i].desc, sprint_hex(response, resplen));
+        activate_field = false;
+    }
+
+    switch_off_field_14b();
+    return PM3_SUCCESS;
+}
+
 static command_t CommandTable[] = {
-    {"---------", CmdHelp,          AlwaysAvailable, "----------------------- " _CYAN_("General") " -----------------------"},
-    {"help",      CmdHelp,          AlwaysAvailable, "This help"},
-    {"list",      CmdHF14BList,     AlwaysAvailable, "List ISO-14443-B history"},
-    {"---------", CmdHelp,          AlwaysAvailable, "----------------------- " _CYAN_("Operations") " -----------------------"},
-    {"apdu",      CmdHF14BAPDU,     IfPm3Iso14443b,  "Send ISO 14443-4 APDU to tag"},
-    {"dump",      CmdHF14BDump,     IfPm3Iso14443b,  "Read all memory pages of an ISO-14443-B tag, save to file"},
-    {"info",      CmdHF14Binfo,     IfPm3Iso14443b,  "Tag information"},
-    {"ndefread",  CmdHF14BNdefRead, IfPm3Iso14443b,  "Read NDEF file on tag"},
-    {"raw",       CmdHF14BRaw,      IfPm3Iso14443b,  "Send raw hex data to tag"},
-    {"rdbl",      CmdHF14BSriRdBl,  IfPm3Iso14443b,  "Read SRI512/SRIX4 block"},
-    {"reader",    CmdHF14BReader,   IfPm3Iso14443b,  "Act as a ISO-14443-B reader to identify a tag"},
-    {"restore",   CmdHF14BRestore,  IfPm3Iso14443b,  "Restore from file to all memory pages of an ISO-14443-B tag"},
-    {"sim",       CmdHF14BSim,      IfPm3Iso14443b,  "Fake ISO ISO-14443-B tag"},
-    {"sniff",     CmdHF14BSniff,    IfPm3Iso14443b,  "Eavesdrop ISO-14443-B"},
-    {"wrbl",      CmdHF14BSriWrbl,  IfPm3Iso14443b,  "Write data to a SRI512/SRIX4 tag"},
-    {"view",      CmdHF14BView,     AlwaysAvailable, "Display content from tag dump file"},
-    {"valid",     CmdSRIX4kValid,   AlwaysAvailable, "SRIX4 checksum test"},
+    {"---------", CmdHelp,             AlwaysAvailable, "----------------------- " _CYAN_("General") " -----------------------"},
+    {"help",      CmdHelp,             AlwaysAvailable, "This help"},
+    {"list",      CmdHF14BList,        AlwaysAvailable, "List ISO-14443-B history"},
+    {"---------", CmdHelp,             AlwaysAvailable, "----------------------- " _CYAN_("Operations") " -----------------------"},
+    {"apdu",      CmdHF14BAPDU,        IfPm3Iso14443b,  "Send ISO 14443-4 APDU to tag"},
+    {"dump",      CmdHF14BDump,        IfPm3Iso14443b,  "Read all memory pages of an ISO-14443-B tag, save to file"},
+    {"info",      CmdHF14Binfo,        IfPm3Iso14443b,  "Tag information"},
+    {"ndefread",  CmdHF14BNdefRead,    IfPm3Iso14443b,  "Read NDEF file on tag"},
+    {"raw",       CmdHF14BRaw,         IfPm3Iso14443b,  "Send raw hex data to tag"},
+    {"rdbl",      CmdHF14BSriRdBl,     IfPm3Iso14443b,  "Read SRI512/SRIX4 block"},
+    {"reader",    CmdHF14BReader,      IfPm3Iso14443b,  "Act as a ISO-14443-B reader to identify a tag"},
+    {"restore",   CmdHF14BRestore,     IfPm3Iso14443b,  "Restore from file to all memory pages of an ISO-14443-B tag"},
+    {"sim",       CmdHF14BSim,         IfPm3Iso14443b,  "Fake ISO ISO-14443-B tag"},
+    {"sniff",     CmdHF14BSniff,       IfPm3Iso14443b,  "Eavesdrop ISO-14443-B"},
+    {"wrbl",      CmdHF14BSriWrbl,     IfPm3Iso14443b,  "Write data to a SRI512/SRIX4 tag"},
+    {"view",      CmdHF14BView,        AlwaysAvailable, "Display content from tag dump file"},
+    {"valid",     CmdSRIX4kValid,      AlwaysAvailable, "SRIX4 checksum test"},
+    {"---------", CmdHelp,             AlwaysAvailable, "------------------ " _CYAN_("Calypso / Mobib") " ------------------"},
+    {"calypso",   CmdHF14BCalypsoRead, IfPm3Iso14443b,  "Read contents of a Calypso card"},
+    {"mobib",     CmdHF14BMobibRead,   IfPm3Iso14443b,  "Read contents of a Mobib card"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -2693,7 +2930,7 @@ int infoHF14B(bool verbose, bool do_aid_search) {
 }
 
 // get and print general info about all known 14b chips
-int readHF14B(bool loop, bool verbose) {
+int readHF14B(bool loop, bool verbose, bool read_plot) {
     bool found = false;
     int res = PM3_SUCCESS;
     do {
@@ -2725,9 +2962,11 @@ int readHF14B(bool loop, bool verbose) {
         if (found)
             goto plot;
 plot:
-        res = handle_hf_plot(verbose);
-        if (res != PM3_SUCCESS) {
-            PrintAndLogEx(DEBUG, "plot failed");
+        if (read_plot) {
+            res = handle_hf_plot(verbose);
+            if (res != PM3_SUCCESS) {
+                PrintAndLogEx(DEBUG, "plot failed");
+            }
         }
 
     } while (loop && kbd_enter_pressed() == false);

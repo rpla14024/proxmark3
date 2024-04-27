@@ -70,8 +70,16 @@ int mfc_ev1_print_signature(uint8_t *uid, uint8_t uidlen, uint8_t *signature, in
     // ref:  MIFARE Classic EV1 Originality Signature Validation
 #define PUBLIC_MFCEV1_ECDA_KEYLEN 33
     const ecdsa_publickey_t nxp_mfc_public_keys[] = {
-        {"NXP MIFARE Classic MFC1C14_x", "044F6D3F294DEA5737F0F46FFEE88A356EED95695DD7E0C27A591E6F6F65962BAF"},
-        {"Manufacturer MIFARE Classic / QL88", "046F70AC557F5461CE5052C8E4A7838C11C7A236797E8A0730A101837C004039C2"},
+        {"NXP MIFARE Classic MFC1C14_x",   "044F6D3F294DEA5737F0F46FFEE88A356EED95695DD7E0C27A591E6F6F65962BAF"},
+        {"MIFARE Classic / QL88",          "046F70AC557F5461CE5052C8E4A7838C11C7A236797E8A0730A101837C004039C2"},
+        {"NXP ICODE DNA, ICODE SLIX2",     "048878A2A2D3EEC336B4F261A082BD71F9BE11C4E2E896648B32EFA59CEA6E59F0"},
+        {"NXP Public key",                 "04A748B6A632FBEE2C0897702B33BEA1C074998E17B84ACA04FF267E5D2C91F6DC"},
+        {"NXP Ultralight Ev1",             "0490933BDCD6E99B4E255E3DA55389A827564E11718E017292FAF23226A96614B8"},
+        {"NXP NTAG21x (2013)",             "04494E1A386D3D3CFE3DC10E5DE68A499B1C202DB5B132393E89ED19FE5BE8BC61"},
+        {"MIKRON Public key",              "04F971EDA742A4A80D32DCF6A814A707CC3DC396D35902F72929FDCD698B3468F2"},
+        {"VivoKey Spark1 Public key",      "04D64BB732C0D214E7EC580736ACF847284B502C25C0F7F2FA86AACE1DADA4387A"},
+        {"TruST25 (ST) key 01?",           "041D92163650161A2548D33881C235D0FB2315C2C31A442F23C87ACF14497C0CBA"},
+        {"TruST25 (ST) key 04?",           "04101E188A8B4CDDBC62D5BC3E0E6850F0C2730E744B79765A0E079907FBDB01BC"},
     };
 
     uint8_t i;
@@ -621,7 +629,7 @@ static int mfc_read_tag(iso14a_card_select_t *card, uint8_t *carddata, uint8_t n
             fflush(stdout);
 
             if (kbd_enter_pressed()) {
-                PrintAndLogEx(WARNING, "\nAborted via keyboard!\n");
+                PrintAndLogEx(WARNING, "\naborted via keyboard!\n");
                 free(fptr);
                 free(keyA);
                 free(keyB);
@@ -779,7 +787,7 @@ static int mf_load_keys(uint8_t **pkeyBlock, uint32_t *pkeycnt, uint8_t *userkey
             PrintAndLogEx(DEBUG, _YELLOW_("%2d") " - %s", i, sprint_hex(*pkeyBlock + i * MIFARE_KEY_SIZE, MIFARE_KEY_SIZE));
         }
         *pkeycnt += numKeys;
-        PrintAndLogEx(SUCCESS, "loaded " _GREEN_("%d") " dynamic keys", numKeys);
+        PrintAndLogEx(SUCCESS, "loaded " _GREEN_("%2d") " user keys", numKeys);
     }
 
     // Handle default keys
@@ -797,7 +805,6 @@ static int mf_load_keys(uint8_t **pkeyBlock, uint32_t *pkeycnt, uint8_t *userkey
     }
     *pkeycnt += ARRAYLEN(g_mifare_default_keys);
     PrintAndLogEx(SUCCESS, "loaded " _GREEN_("%zu") " keys from hardcoded default array", ARRAYLEN(g_mifare_default_keys));
-
 
     // Handle user supplied dictionary file
     if (fnlen > 0) {
@@ -4245,13 +4252,18 @@ void printKeyTableEx(size_t sectorscnt, sector_t *e_sector, uint8_t start_sector
             s = i;
         }
 
-        PrintAndLogEx(SUCCESS, " " _YELLOW_("%03d") " | %03d | %s | %s | %s | %s"
+        char extra[24] = {0x00};
+        if (sectorscnt == 18 && i > 15) {
+            strcat(extra, "( " _MAGENTA_("*") " )");
+        }
+
+        PrintAndLogEx(SUCCESS, " " _YELLOW_("%03d") " | %03d | %s | %s | %s | %s %s"
                       , s
                       , mfSectorTrailerOfSector(s)
                       , strA, resA
                       , strB, resB
+                      , extra
                      );
-
     }
 
     PrintAndLogEx(SUCCESS, "-----+-----+--------------+---+--------------+----");
@@ -4268,6 +4280,10 @@ void printKeyTableEx(size_t sectorscnt, sector_t *e_sector, uint8_t start_sector
                       _YELLOW_("A") ":keyA "
                       " )"
                      );
+        if (sectorscnt == 18) {
+            PrintAndLogEx(INFO, "( " _MAGENTA_("*") " ) These sectors used for signature. Lays outside of user memory");
+        }
+
     } else {
         PrintAndLogEx(SUCCESS, "( " _RED_("0") ":Failed / " _GREEN_("1") ":Success )");
     }
@@ -4711,7 +4727,7 @@ static int CmdHF14AMfEView(const char *Cmd) {
         arg_lit0(NULL, "2k", "MIFARE Classic/Plus 2k"),
         arg_lit0(NULL, "4k", "MIFARE Classic 4k / S70"),
         arg_lit0("v", "verbose", "verbose output"),
-        arg_lit0(NULL, "sk", "Save extracted keys to file"),
+        arg_lit0(NULL, "sk", "Save extracted keys to binary file"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -6803,9 +6819,9 @@ int CmdHFMFNDEFWrite(const char *Cmd) {
 
         // find next available block
         block_no++;
+
         if (mfIsSectorTrailer(block_no)) {
             block_no++;
-
             // skip sectors which isn't ndef formatted
             while (freemem[mfSectorNum(block_no)] == 0) {
                 block_no++;
@@ -7149,8 +7165,9 @@ static int CmdHf14AMfSuperCard(const char *Cmd) {
 
     CLIParserFree(ctx);
 
+    // sanity checks
     if (res || (!res && uidlen && uidlen != sizeof(uid))) {
-        PrintAndLogEx(ERR, "UID must include 8 HEX symbols");
+        PrintAndLogEx(ERR, "UID must include 4 hex bytes");
         return PM3_EINVARG;
     }
 
@@ -7555,7 +7572,7 @@ static int CmdHF14AMfView(const char *Cmd) {
         arg_param_begin,
         arg_str1("f", "file", "<fn>", "Specify a filename for dump file"),
         arg_lit0("v", "verbose", "verbose output"),
-        arg_lit0(NULL, "sk", "Save extracted keys to file"),
+        arg_lit0(NULL, "sk", "Save extracted keys to binary file"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -7650,6 +7667,127 @@ static int CmdHF14AMfView(const char *Cmd) {
     return PM3_SUCCESS;
 }
 
+static int parse_gtu_cfg(uint8_t *d, size_t n) {
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(INFO, "---------- " _CYAN_("GTU Gen4 Configuration") " -------------------------------------");
+    if (n != 30 && n != 32) {
+        PrintAndLogEx(INFO, "%s", sprint_hex_inrow(d, n));
+        PrintAndLogEx(INFO, "%zu bytes", n);
+        PrintAndLogEx(WARNING, "Unknown config format");
+        return PM3_SUCCESS;
+    }
+
+    PrintAndLogEx(INFO, _YELLOW_("%s"), sprint_hex_inrow(d, n));
+    PrintAndLogEx(INFO, "%zu bytes", n);
+    PrintAndLogEx(INFO, "");
+    PrintAndLogEx(INFO, _CYAN_("Config 1 - UID & modes"));
+    PrintAndLogEx(INFO, "%s", sprint_hex_inrow(d, 8));
+    PrintAndLogEx(INFO, "%02X.............. " NOLF, d[0]);
+    bool is_ul_enabled = (d[0] == 1);
+    switch (d[0]) {
+        case 0x00:
+            PrintAndLogEx(NORMAL, "MIFARE Classic mode");
+            break;
+        case 0x01:
+            PrintAndLogEx(NORMAL, "MIFARE Ultralight/NTAG mode");
+            break;
+        default:
+            PrintAndLogEx(NORMAL, _RED_("unknown"));
+            break;
+    }
+
+    PrintAndLogEx(INFO, "..%02X............ UID " NOLF, d[1]);
+
+    switch (d[1]) {
+        case 0x00:
+            PrintAndLogEx(NORMAL, _GREEN_("4") " byte");
+            break;
+        case 0x01:
+            PrintAndLogEx(NORMAL, _GREEN_("7") " byte");
+            break;
+        case 0x02:
+            PrintAndLogEx(NORMAL, _GREEN_("10") " byte");
+            break;
+        default:
+            PrintAndLogEx(NORMAL, _RED_("unknown"));
+            break;
+    }
+
+    PrintAndLogEx(INFO, "...." _YELLOW_("%s") ".... " _YELLOW_("Password"), sprint_hex_inrow(&d[2], 4));
+    PrintAndLogEx(INFO, "............%02X.. GTU mode " NOLF, d[6]);
+    switch (d[6]) {
+        case 0x00:
+            PrintAndLogEx(NORMAL, _GREEN_("pre-write") " - shadow data can be written");
+            break;
+        case 0x01:
+            PrintAndLogEx(NORMAL, _GREEN_("restore mode"));
+            break;
+        case 0x02:
+            PrintAndLogEx(NORMAL, "disabled");
+            break;
+        case 0x03:
+            PrintAndLogEx(NORMAL, "disabled, high speed R/W mode for Ultralight ?");
+            break;
+        default:
+            PrintAndLogEx(NORMAL, _RED_("unknown"));
+            break;
+    }
+
+    PrintAndLogEx(INFO, "..............%02X unknown", d[7]);
+    PrintAndLogEx(INFO, "");
+
+    // ATS seems to have 16 bytes reserved
+    PrintAndLogEx(INFO, _CYAN_("Config 2 - ATS"));
+    PrintAndLogEx(INFO, "%s", sprint_hex_inrow(d + 8, 16));
+    PrintAndLogEx(INFO, "%s.............. ATS ( %d bytes )", sprint_hex_inrow(&d[8], d[7]), d[7]);
+    PrintAndLogEx(INFO, "..................%s Reserved for ATS", sprint_hex_inrow(d + 8 + d[7], 16 - d[7]));
+
+    PrintAndLogEx(INFO, "");
+    PrintAndLogEx(INFO, _CYAN_("Config 3 - Limits"));
+    PrintAndLogEx(INFO, "%s", sprint_hex_inrow(d + 24, (n - 24)));
+    PrintAndLogEx(INFO, "%02X%02X............ ATQA", d[24], d[25]);
+    PrintAndLogEx(INFO, "....%02X.......... SAK", d[26]);
+    PrintAndLogEx(INFO, "......%02X........ " NOLF, d[27]);
+    switch (d[27]) {
+        case 0x00:
+            PrintAndLogEx(NORMAL, "%s", (is_ul_enabled) ? _GREEN_("Ultralight EV1")  : "Ultralight Ev1");
+            break;
+        case 0x01:
+            PrintAndLogEx(NORMAL, "%s", (is_ul_enabled) ? _GREEN_("NTAG")  : "NTAG");
+            break;
+        case 0x02:
+            PrintAndLogEx(NORMAL, "%s", (is_ul_enabled) ? _GREEN_("Ultralight C")  : "Ultralight C");
+            break;
+        case 0x03:
+            PrintAndLogEx(NORMAL, "%s", (is_ul_enabled) ? _GREEN_("Ultralight")  : "Ultralight");
+            break;
+        default:
+            PrintAndLogEx(NORMAL, _RED_("unknown"));
+            break;
+    }
+
+    PrintAndLogEx(INFO, "........%02X...... Max R/W sectors", d[28]);
+    PrintAndLogEx(INFO, "..........%02X.... " NOLF, d[29]);
+    switch (d[29]) {
+        case 0x00:
+            PrintAndLogEx(NORMAL, _GREEN_("CUID enabled"));
+            break;
+        case 0x01:
+            PrintAndLogEx(NORMAL, "CUID disabled");
+            break;
+        case 0x02:
+            PrintAndLogEx(NORMAL, "Default value. Same behaviour as 00?");
+            break;
+        default:
+            PrintAndLogEx(NORMAL, _RED_("unknown"));
+            break;
+    }
+    PrintAndLogEx(INFO, "............%s unknown", sprint_hex_inrow(d + 30, n - 30));
+    PrintAndLogEx(INFO, "");
+    return PM3_SUCCESS;
+}
+
 // info about Gen4 GTU card
 static int CmdHF14AGen4Info(const char *cmd) {
     CLIParserContext *ctx;
@@ -7657,11 +7795,13 @@ static int CmdHF14AGen4Info(const char *cmd) {
                   "Read info about magic gen4 GTU card.",
                   "hf mf ginfo                  --> get info with default password 00000000\n"
                   "hf mf ginfo --pwd 01020304   --> get info with password\n"
+                  "hf mf ginfo -d 00000000000002090978009102BDAC19131011121314151604001800FF0002FD -v --> decode config block"
                  );
     void *argtable[] = {
         arg_param_begin,
         arg_lit0("v", "verbose", "verbose output"),
-        arg_str0("p", "pwd", "<hex>", "password 4bytes"),
+        arg_str0("p", "pwd", "<hex>", "password 4 bytes"),
+        arg_str0("d", "data", "<hex>", "config bytes 32 bytes"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, cmd, argtable, true);
@@ -7670,6 +7810,10 @@ static int CmdHF14AGen4Info(const char *cmd) {
     int pwd_len = 0;
     uint8_t pwd[4] = {0};
     CLIGetHexWithReturn(ctx, 2, pwd, &pwd_len);
+
+    int dlen = 0;
+    uint8_t data[32] = {0};
+    CLIGetHexWithReturn(ctx, 3, data, &dlen);
     CLIParserFree(ctx);
 
     if (pwd_len != 0 && pwd_len != 4) {
@@ -7679,156 +7823,74 @@ static int CmdHF14AGen4Info(const char *cmd) {
 
     uint8_t resp[40] = {0};
     size_t resplen = 0;
-    int res = mfG4GetConfig(pwd, resp, &resplen, verbose);
-    if (res != PM3_SUCCESS || resplen == 0) {
-        if (res == PM3_ETIMEOUT)
-            PrintAndLogEx(ERR, "No card in the field or card command timeout.");
-        else
-            PrintAndLogEx(ERR, "Error get config. Maybe not a Gen4 card?. error=%d rlen=%zu", res, resplen);
-        return PM3_ESOFT;
+    int res = 0;
+
+    if (dlen != 32) {
+        res = mfG4GetConfig(pwd, resp, &resplen, verbose);
+        if (res != PM3_SUCCESS || resplen == 0) {
+            if (res == PM3_ETIMEOUT)
+                PrintAndLogEx(ERR, "No card in the field or card command timeout.");
+            else
+                PrintAndLogEx(ERR, "Error get config. Maybe not a Gen4 card?. error=%d rlen=%zu", res, resplen);
+            return PM3_ESOFT;
+        }
+    } else {
+        memcpy(resp, data, dlen);
+        resplen = 32;
     }
 
-    PrintAndLogEx(INFO, "---------- Gen4 configuration ----------");
-    if (resplen != 30 && resplen != 32) {
-        PrintAndLogEx(INFO, "Raw config [%02zu] %s", resplen, sprint_hex_inrow(resp, resplen));
-        PrintAndLogEx(WARNING, "Unknown config format");
-        return PM3_SUCCESS;
-    }
-    if (verbose)
-        PrintAndLogEx(INFO, "Raw config [%02zu]..... %s", resplen, sprint_hex_inrow(resp, resplen));
-
-    PrintAndLogEx(INFO, "UL protocol......... %02x" NOLF, resp[0]);
-    switch (resp[0]) {
-        case 0x00:
-            PrintAndLogEx(NORMAL, " (MIFARE Classic mode)");
-            break;
-        case 0x01:
-            PrintAndLogEx(NORMAL, " (MIFARE Ultralight/NTAG mode)");
-            break;
-        default:
-            PrintAndLogEx(NORMAL, " (unknown %02x)", resp[0]);
-            break;
-    }
+    parse_gtu_cfg(resp, resplen);
 
     uint8_t uid_len = resp[1];
-    PrintAndLogEx(INFO, "UID length.......... %02x" NOLF, resp[1]);
-    switch (resp[1]) {
-        case 0x00:
-            PrintAndLogEx(NORMAL, " (4 byte)");
-            break;
-        case 0x01:
-            PrintAndLogEx(NORMAL, " (7 byte)");
-            break;
-        case 0x02:
-            PrintAndLogEx(NORMAL, " (10 byte)");
-            break;
-        default:
-            PrintAndLogEx(NORMAL, " (unknown %02x)", resp[1]);
-            break;
-    }
-
-    PrintAndLogEx(INFO, "Password............ %s", sprint_hex_inrow(&resp[2], 4));
-
-    PrintAndLogEx(INFO, "GTU mode............ %02x" NOLF, resp[6]);
-    switch (resp[6]) {
-        case 0x00:
-            PrintAndLogEx(NORMAL, " (pre-write, shadow data can be written)");
-            break;
-        case 0x01:
-            PrintAndLogEx(NORMAL, " (restore mode)");
-            break;
-        case 0x02:
-            PrintAndLogEx(NORMAL, " (disabled)");
-            break;
-        case 0x03:
-            PrintAndLogEx(NORMAL, " (disabled, high speed R/W mode for Ultralight?)");
-            break;
-        default:
-            PrintAndLogEx(NORMAL, " (unknown %02x)", resp[6]);
-            break;
-    }
-
-    PrintAndLogEx(INFO, "ATS [%02d]............ %s", resp[7], sprint_hex_inrow(&resp[8], resp[7]));
-    PrintAndLogEx(INFO, "ATQA................ %02x%02x", resp[25], resp[24]);
-    PrintAndLogEx(INFO, "SAK................. %02x", resp[26]);
-
-    PrintAndLogEx(INFO, "UL mode............. %02x" NOLF, resp[27]);
-    switch (resp[27]) {
-        case 0x00:
-            PrintAndLogEx(NORMAL, " (UL EV1)");
-            break;
-        case 0x01:
-            PrintAndLogEx(NORMAL, " (NTAG)");
-            break;
-        case 0x02:
-            PrintAndLogEx(NORMAL, " (UL-C)");
-            break;
-        case 0x03:
-            PrintAndLogEx(NORMAL, " (UL)");
-            break;
-        default:
-            PrintAndLogEx(NORMAL, " (unknown %02x)", resp[27]);
-            break;
-    }
-
-    PrintAndLogEx(INFO, "max rd/wr sectors... %02x", resp[28]);
-    PrintAndLogEx(INFO, "block0 direct wr.... %02x" NOLF, resp[29]);
-    switch (resp[29]) {
-        case 0x00:
-            PrintAndLogEx(NORMAL, " (Activate direct write to block 0 (Same behaviour of Gen2 cards. Some readers may identify the card as magic))");
-            break;
-        case 0x01:
-            PrintAndLogEx(NORMAL, " (Deactivate direct write to block 0 (Same behaviour of vanilla cards))");
-            break;
-        case 0x02:
-            PrintAndLogEx(NORMAL, " (Default value. Same behaviour as 00?");
-            break;
-        default:
-            PrintAndLogEx(NORMAL, " (unknown %02x)", resp[29]);
-            break;
-    }
 
     res = mfG4GetFactoryTest(pwd, resp, &resplen, false);
     if (res == PM3_SUCCESS && resplen > 2) {
+        PrintAndLogEx(INFO, "");
+        PrintAndLogEx(INFO, _CYAN_("Factory test"));
         if (verbose) {
-            PrintAndLogEx(INFO, "");
-            PrintAndLogEx(INFO, "Raw test [%02zu]....... %s", resplen, sprint_hex_inrow(resp, resplen));
+            PrintAndLogEx(INFO, "Raw......... %s", sprint_hex_inrow(resp, resplen));
         }
 
-        if (resp[resplen - 2] == 0x66 && resp[resplen - 1] == 0x66)
-            PrintAndLogEx(INFO, "Card type........... generic");
-        else if (resp[resplen - 2] == 0x02 && resp[resplen - 1] == 0xaa)
-            PrintAndLogEx(INFO, "Card type........... limited functionality");
-        else if (resp[resplen - 2] == 0x03 && resp[resplen - 1] == 0xa0)
-            PrintAndLogEx(INFO, "Card type........... old card version");
-        else if (resp[resplen - 2] == 0x06 && resp[resplen - 1] == 0xa0)
-            PrintAndLogEx(INFO, "Card type........... new card version");
-        else
-            PrintAndLogEx(INFO, "Card type........... unknown %02x%02x", resp[resplen - 2], resp[resplen - 1]);
+        if (memcmp(resp + resplen - 2, "\x66\x66", 2) == 0) {
+            PrintAndLogEx(INFO, "Card type... Generic");
+
+        } else if (memcmp(resp + resplen - 2, "\x02\xAA", 2) == 0) {
+            PrintAndLogEx(INFO, "Card type... " _RED_("Limited functionality"));
+
+        } else if (memcmp(resp + resplen - 2, "\x03\xA0", 2) == 0) {
+            PrintAndLogEx(INFO, "Card type... Old card version");
+
+        } else if (memcmp(resp + resplen - 2, "\x06\xA0", 2) == 0) {
+            PrintAndLogEx(INFO, "Card type... " _GREEN_("New card version"));
+
+        } else {
+            PrintAndLogEx(INFO, "Card type... " _RED_("unknown %02X%02X"), resp[resplen - 2], resp[resplen - 1]);
+        }
     }
 
     // read block 0
     res = mfG4GetBlock(pwd, 0, resp, MAGIC_INIT | MAGIC_OFF);
     if (res == PM3_SUCCESS) {
         PrintAndLogEx(INFO, "");
-        PrintAndLogEx(INFO, "Block 0............. %s", sprint_hex_inrow(resp, 16));
+        PrintAndLogEx(INFO, _CYAN_("Block 0 test"));
+        PrintAndLogEx(INFO, "Block 0..... %s", sprint_hex_inrow(resp, 16));
 
         switch (uid_len) {
             case 0x00:
-                PrintAndLogEx(INFO, "UID [4]............. %s", sprint_hex(resp, 4));
+                PrintAndLogEx(INFO, "UID [4]..... %s", sprint_hex_inrow(resp, 4));
                 break;
             case 0x01:
-                PrintAndLogEx(INFO, "UID [7]............. %s", sprint_hex(resp, 7));
+                PrintAndLogEx(INFO, "UID [7]..... %s", sprint_hex_inrow(resp, 7));
                 break;
             case 0x02:
-                PrintAndLogEx(INFO, "UID [10]............ %s", sprint_hex(resp, 10));
+                PrintAndLogEx(INFO, "UID [10..... %s", sprint_hex_inrow(resp, 10));
                 break;
             default:
                 break;
         }
     }
 
-
+    PrintAndLogEx(NORMAL, "");
     return PM3_SUCCESS;
 }
 
@@ -8496,7 +8558,8 @@ static int CmdHF14AGen4ChangePwd(const char *Cmd) {
 }
 
 static void parse_gdm_cfg(const uint8_t *d) {
-    PrintAndLogEx(SUCCESS, "------------------- " _CYAN_("GDM Configuration") " -----------------------------------------");
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(SUCCESS, "------------------- " _CYAN_("GDM Gen4 Configuration") " -----------------------------------------");
     PrintAndLogEx(SUCCESS,  _YELLOW_("%s"), sprint_hex_inrow(d, MFBLOCK_SIZE));
     PrintAndLogEx(SUCCESS,  _YELLOW_("%02X%02X") "............................ %s %s"
                   , d[0]
@@ -8504,10 +8567,10 @@ static void parse_gdm_cfg(const uint8_t *d) {
                   , (d[0] == 0x85 && d[1] == 0x00) ? "Magic wakeup disabled" : _GREEN_("Magic wakeup enabled")
                   , (d[0] == 0x85 && d[1] == 0x00) ? "" : ((d[0] == 0x7A && d[1] == 0xFF) ? _GREEN_("with GDM cfg block access") : _RED_(", no GDM cfg block access"))
                  );
-    PrintAndLogEx(SUCCESS, "...." _YELLOW_("%02X") ".......................... Magic wakeup style %s", d[2], ((d[2] == 0x85) ? "GDM 20(7)/23" : "Gen1a 40(7)/43"));
-    PrintAndLogEx(SUCCESS, "......" _YELLOW_("%02X%02X%02X") ".................... n/a", d[3], d[4], d[5]);
+    PrintAndLogEx(SUCCESS, "...." _YELLOW_("%02X") ".......................... Magic wakeup style " _YELLOW_("%s"), d[2], ((d[2] == 0x85) ? "GDM 20(7)/23" : "Gen1a 40(7)/43"));
+    PrintAndLogEx(SUCCESS, "......" _YELLOW_("%02X%02X%02X") ".................... unknown", d[3], d[4], d[5]);
     PrintAndLogEx(SUCCESS, "............" _YELLOW_("%02X") ".................. %s", d[6], (d[6] == 0x5A) ? "Key B use blocked when readable by ACL" : "Key B use allowed when readable by ACL");
-    PrintAndLogEx(SUCCESS, ".............." _YELLOW_("%02X") "................ %s", d[7], (d[7] == 0x5A) ? _GREEN_("CUID - Block 0 Direct Write Enabled") : "CUID - Block 0 Direct Write Disabled");
+    PrintAndLogEx(SUCCESS, ".............." _YELLOW_("%02X") "................ %s", d[7], (d[7] == 0x5A) ? _GREEN_("CUID enabled") : "CUID Disabled");
     PrintAndLogEx(SUCCESS, "................" _YELLOW_("%02X") ".............. n/a", d[8]);
 
     const char *pers;
@@ -8531,13 +8594,14 @@ static void parse_gdm_cfg(const uint8_t *d) {
             pers = "4B UID from Block 0";
             break;
     }
-    PrintAndLogEx(SUCCESS, ".................." _YELLOW_("%02X") "............ MFC EV1 perso... " _YELLOW_("%s"), d[9], pers);
+    PrintAndLogEx(SUCCESS, ".................." _YELLOW_("%02X") "............ MFC EV1 perso. " _YELLOW_("%s"), d[9], pers);
     PrintAndLogEx(SUCCESS, "...................." _YELLOW_("%02X") ".......... %s", d[10], (d[10] == 0x5A) ? _GREEN_("Shadow mode enabled") : "Shadow mode disabled");
     PrintAndLogEx(SUCCESS, "......................" _YELLOW_("%02X") "........ %s", d[11], (d[11] == 0x5A) ? _GREEN_("Magic auth enabled") : "Magic auth disabled");
     PrintAndLogEx(SUCCESS, "........................" _YELLOW_("%02X") "...... %s", d[12], (d[12] == 0x5A) ? _GREEN_("Static encrypted nonce enabled") : "Static encrypted nonce disabled");
     PrintAndLogEx(SUCCESS, ".........................." _YELLOW_("%02X") ".... %s", d[13], (d[13] == 0x5A) ? _GREEN_("MFC EV1 signature enabled") : "MFC EV1 signature disabled");
     PrintAndLogEx(SUCCESS, "............................" _YELLOW_("%02X") ".. n/a", d[14]);
     PrintAndLogEx(SUCCESS, ".............................." _YELLOW_("%02X") " SAK", d[15]);
+    PrintAndLogEx(NORMAL, "");
 }
 
 static int CmdHF14AGen4_GDM_ParseCfg(const char *Cmd) {
@@ -9298,7 +9362,6 @@ static int CmdHF14AMfInfo(const char *Cmd) {
         if (verbose) {
             PrintAndLogEx(SUCCESS, "ATQA: %02X %02X", card.atqa[1], card.atqa[0]);
         }
-
         return select_status;
     }
 
@@ -9398,7 +9461,7 @@ static int CmdHF14AMfInfo(const char *Cmd) {
             (blockdata[8] == 0x04 && blockdata[15] == 0x90) ||
             (memcmp(blockdata + 8, "\x62\x63\x64\x65\x66\x67\x68\x69", 8) == 0)
         ) {
-            PrintAndLogEx(SUCCESS, "FUDAN detected");
+            PrintAndLogEx(SUCCESS, "FUDAN based card");
         }
 
         if (e_sector[1].foundKey[MF_KEY_A] && (e_sector[1].Key[MF_KEY_A] == 0x2A2C13CC242A)) {

@@ -67,6 +67,9 @@ FRA_OrganizationalAuthority_Contract_Provider = {
     0x021: {
         1: 'Bordeaux (TBM / Keolis)',
     },
+    0x057: {
+        1: 'Lyon (TCL / Keolis)',
+    },
     0x072: {
         1: 'Tours (filbleu / Keolis)',
     },
@@ -84,6 +87,7 @@ FRA_OrganizationalAuthority_Contract_Provider = {
     },
     0x908: {
         1: 'Rennes (STAR / Keolis)',
+        8: 'Saint-Malo (MAT / RATP)',
     },
     0x911: {
         5: 'Besançon (Ginko / Keolis)',

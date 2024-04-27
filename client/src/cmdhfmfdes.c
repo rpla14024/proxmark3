@@ -144,7 +144,9 @@ typedef enum {
     DESFIRE_EV3,
     DESFIRE_LIGHT,
     PLUS_EV1,
+    PLUS_EV2,
     NTAG413DNA,
+    NTAG424,
 } nxp_cardtype_t;
 
 typedef enum {
@@ -244,33 +246,65 @@ static char *getProtocolStr(uint8_t id, bool hw) {
     return buf;
 }
 
-static char *getVersionStr(uint8_t major, uint8_t minor) {
+static char *getVersionStr(uint8_t type, uint8_t major, uint8_t minor) {
 
     static char buf[40] = {0x00};
     char *retStr = buf;
 
-    if (major == 0x00)
+    if (type == 0x01 && major == 0x00)
         snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire MF3ICD40") " )", major, minor);
-    else if (major == 0x01 && minor == 0x00)
-        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV1") " )", major, minor);
-    else if (major == 0x12 && minor == 0x00)
-        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV2") " )", major, minor);
-    else if (major == 0x22 && minor == 0x00)
-        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV2 XL") " )", major, minor);
-    else if (major == 0x42 && minor == 0x00)
-        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV2") " )", major, minor);
-    else if (major == 0x33 && minor == 0x00)
-        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV3") " )", major, minor);
-    else if (major == 0x30 && minor == 0x00)
-        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire Light") " )", major, minor);
     else if (major == 0x10 && minor == 0x00)
         snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("NTAG413DNA") " )", major, minor);
+    else if (type == 0x01 && major == 0x01 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV1") " )", major, minor);
+    else if (type == 0x01 && major == 0x12 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV2") " )", major, minor);
+    else if (type == 0x01 && major == 0x22 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV2 XL") " )", major, minor);
+    else if (type == 0x01 && major == 0x42 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV2") " )", major, minor);
+    else if (type == 0x01 && major == 0x33 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire EV3") " )", major, minor);
+    else if (type == 0x01 && major == 0x30 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("DESFire Light") " )", major, minor);
+    else if (type == 0x02 && major == 0x11 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("Plus EV1") " )", major, minor);
+    else if (type == 0x02 && major == 0x22 && minor == 0x00)
+        snprintf(retStr, sizeof(buf), "%x.%x ( " _GREEN_("Plus EV2") " )", major, minor);
     else
         snprintf(retStr, sizeof(buf), "%x.%x ( " _YELLOW_("Unknown") " )", major, minor);
     return buf;
 
 //04 01 01 01 00 1A 05
 }
+
+static char *getTypeStr(uint8_t type) {
+
+    static char buf[40] = {0x00};
+    char *retStr = buf;
+
+    switch (type) {
+        case 0x01:
+            snprintf(retStr, sizeof(buf), "0x%02X ( " _YELLOW_("DESFire") " )", type);
+            break;
+        case 0x02:
+            snprintf(retStr, sizeof(buf), "0x%02X ( " _YELLOW_("Plus") " )", type);
+            break;
+        case 0x03:
+            snprintf(retStr, sizeof(buf), "0x%02X ( " _YELLOW_("Ultralight") " )", type);
+            break;
+        case 0x04:
+            snprintf(retStr, sizeof(buf), "0x%02X ( " _YELLOW_("NTAG") " )", type);
+            break;
+        case 0x81:
+            snprintf(retStr, sizeof(buf), "0x%02X ( " _YELLOW_("Smartcard") " )", type);
+            break;
+        default:
+            break;
+    }
+    return buf;
+}
+
 
 static char noCommentStr[1] = { 0x00 };
 static const char *getAidCommentStr(uint8_t *aid) {
@@ -282,26 +316,51 @@ static const char *getAidCommentStr(uint8_t *aid) {
     return noCommentStr;
 }
 
-static nxp_cardtype_t getCardType(uint8_t major, uint8_t minor) {
+static nxp_cardtype_t getCardType(uint8_t type, uint8_t major, uint8_t minor) {
 
-    if (major == 0x00)
+    // DESFire MF3ICD40
+    if (type == 0x01 && major == 0x00 && minor == 0x02)
         return DESFIRE_MF3ICD40;
-    if (major == 0x01 && minor == 0x00)
+
+    // DESFire EV1
+    if (type == 0x01 && major == 0x01 && minor == 0x00)
         return DESFIRE_EV1;
-    if (major == 0x12 && minor == 0x00)
+
+    // DESFire EV2
+    if (type == 0x01 && major == 0x12 && minor == 0x00)
         return DESFIRE_EV2;
-    if (major == 0x22 && minor == 0x00)
+
+    if (type == 0x01 && major == 0x22 && minor == 0x00)
         return DESFIRE_EV2_XL;
-    if (major == 0x42 && minor == 0x00)
-        return DESFIRE_EV2;
-    if (major == 0x33 && minor == 0x00)
+
+    // DESFire EV3
+    if (type == 0x01 && major == 0x33 && minor == 0x00)
         return DESFIRE_EV3;
-    if (major == 0x30 && minor == 0x00)
+
+    // DESFire Light
+    if (type == 0x08 && major == 0x30 && minor == 0x00)
         return DESFIRE_LIGHT;
-    if (major == 0x11 && minor == 0x00)
+
+    // combo card DESFire / EMV
+    if (type == 0x81 && major == 0x42 && minor == 0x00)
+        return DESFIRE_EV2;
+
+    // Plus EV1
+    if (type == 0x02 && major == 0x11 && minor == 0x00)
         return PLUS_EV1;
+
+    // Plus Ev2
+    if (type == 0x02 && major == 0x22 && minor == 0x00)
+        return PLUS_EV2;
+
+    // NTAG 413 DNA
     if (major == 0x10 && minor == 0x00)
         return NTAG413DNA;
+
+    // NTAG 424
+    if (type == 0x04 && major == 0x30 && minor == 0x00)
+        return NTAG424;
+
     return DESFIRE_UNKNOWN;
 }
 
@@ -341,9 +400,9 @@ static const char *getProductTypeStr(const uint8_t *versionhw) {
 }
 
 static int mfdes_get_info(mfdes_info_res_t *info) {
-    SendCommandNG(CMD_HF_DESFIRE_INFO, NULL, 0);
-    PacketResponseNG resp;
 
+    PacketResponseNG resp;
+    SendCommandNG(CMD_HF_DESFIRE_INFO, NULL, 0);
     if (WaitForResponseTimeout(CMD_HF_DESFIRE_INFO, &resp, 1500) == false) {
         PrintAndLogEx(WARNING, "Command execute timeout");
         DropField();
@@ -353,6 +412,7 @@ static int mfdes_get_info(mfdes_info_res_t *info) {
     memcpy(info, resp.data.asBytes, sizeof(mfdes_info_res_t));
 
     if (resp.status != PM3_SUCCESS) {
+
         switch (info->isOK) {
             case 1:
                 PrintAndLogEx(WARNING, "Can't select card");
@@ -657,9 +717,29 @@ static int CmdHF14ADesInfo(const char *Cmd) {
         return res;
     }
 
-    nxp_cardtype_t cardtype = getCardType(info.versionHW[3], info.versionHW[4]);
+    nxp_cardtype_t cardtype = getCardType(info.versionHW[1], info.versionHW[3], info.versionHW[4]);
     if (cardtype == PLUS_EV1) {
         PrintAndLogEx(INFO, "Card seems to be MIFARE Plus EV1.  Try " _YELLOW_("`hf mfp info`"));
+        DropField();
+        return PM3_SUCCESS;
+    }
+
+    if (cardtype == PLUS_EV2) {
+        PrintAndLogEx(INFO, "Card seems to be MIFARE Plus EV2.  Try " _YELLOW_("`hf mfp info`"));
+        DropField();
+        return PM3_SUCCESS;
+    }
+
+    if (cardtype == NTAG424) {
+        PrintAndLogEx(INFO, "Card seems to be NTAG 424.  Try " _YELLOW_("`hf ntag424 info`"));
+        DropField();
+        return PM3_SUCCESS;
+    }
+
+    if (cardtype == DESFIRE_UNKNOWN) {
+        PrintAndLogEx(INFO, "HW Version.. %s", sprint_hex_inrow(info.versionHW, sizeof(info.versionHW)));
+        PrintAndLogEx(INFO, "SW Version.. %s", sprint_hex_inrow(info.versionSW, sizeof(info.versionSW)));
+        PrintAndLogEx(INFO, "Version data identification failed. Report to Iceman!");
         DropField();
         return PM3_SUCCESS;
     }
@@ -680,16 +760,16 @@ static int CmdHF14ADesInfo(const char *Cmd) {
     PrintAndLogEx(INFO, "   raw: %s", sprint_hex_inrow(info.versionHW, sizeof(info.versionHW)));
 
     PrintAndLogEx(INFO, "     Vendor Id: " _YELLOW_("%s"), getTagInfo(info.versionHW[0]));
-    PrintAndLogEx(INFO, "          Type: " _YELLOW_("0x%02X"), info.versionHW[1]);
+    PrintAndLogEx(INFO, "          Type: %s", getTypeStr(info.versionHW[1]));
     PrintAndLogEx(INFO, "       Subtype: " _YELLOW_("0x%02X"), info.versionHW[2]);
-    PrintAndLogEx(INFO, "       Version: %s", getVersionStr(info.versionHW[3], info.versionHW[4]));
+    PrintAndLogEx(INFO, "       Version: %s", getVersionStr(info.versionHW[1], info.versionHW[3], info.versionHW[4]));
     PrintAndLogEx(INFO, "  Storage size: %s", getCardSizeStr(info.versionHW[5]));
     PrintAndLogEx(INFO, "      Protocol: %s", getProtocolStr(info.versionHW[6], true));
     PrintAndLogEx(NORMAL, "");
     PrintAndLogEx(INFO, "--- " _CYAN_("Software Information"));
     PrintAndLogEx(INFO, "   raw: %s", sprint_hex_inrow(info.versionSW, sizeof(info.versionSW)));
     PrintAndLogEx(INFO, "     Vendor Id: " _YELLOW_("%s"), getTagInfo(info.versionSW[0]));
-    PrintAndLogEx(INFO, "          Type: " _YELLOW_("0x%02X"), info.versionSW[1]);
+    PrintAndLogEx(INFO, "          Type: %s", getTypeStr(info.versionSW[1]));
     PrintAndLogEx(INFO, "       Subtype: " _YELLOW_("0x%02X"), info.versionSW[2]);
     PrintAndLogEx(INFO, "       Version: " _YELLOW_("%d.%d"),  info.versionSW[3], info.versionSW[4]);
     PrintAndLogEx(INFO, "  Storage size: %s", getCardSizeStr(info.versionSW[5]));
@@ -1339,8 +1419,9 @@ static int CmdHF14aDesChk(const char *Cmd) {
         }
 
         if (pattern2b && startPattern < 0x10000) {
-            if (verbose == false)
+            if (verbose == false) {
                 PrintAndLogEx(NORMAL, "p" NOLF);
+            }
 
             aeskeyListLen = 0;
             deskeyListLen = 0;
@@ -1350,29 +1431,34 @@ static int CmdHF14aDesChk(const char *Cmd) {
         }
 
         if (dict_filenamelen) {
-            if (verbose == false)
+            if (verbose == false) {
                 PrintAndLogEx(NORMAL, "d" NOLF);
+            }
 
             uint32_t keycnt = 0;
             res = loadFileDICTIONARYEx((char *)dict_filename, deskeyList, sizeof(deskeyList), NULL, 16, &keycnt, endFilePosition, &endFilePosition, false);
-            if (res == PM3_SUCCESS && endFilePosition)
+            if (res == PM3_SUCCESS && endFilePosition) {
                 deskeyListLen = keycnt;
+            }
 
             keycnt = 0;
             res = loadFileDICTIONARYEx((char *)dict_filename, aeskeyList, sizeof(aeskeyList), NULL, 16, &keycnt, endFilePosition, &endFilePosition, false);
-            if (res == PM3_SUCCESS && endFilePosition)
+            if (res == PM3_SUCCESS && endFilePosition) {
                 aeskeyListLen = keycnt;
+            }
 
             keycnt = 0;
             res = loadFileDICTIONARYEx((char *)dict_filename, k3kkeyList, sizeof(k3kkeyList), NULL, 16, &keycnt, endFilePosition, &endFilePosition, false);
-            if (res == PM3_SUCCESS && endFilePosition)
+            if (res == PM3_SUCCESS && endFilePosition) {
                 k3kkeyListLen = keycnt;
+            }
 
             continue;
         }
     }
-    if (verbose == false)
+    if (verbose == false) {
         PrintAndLogEx(NORMAL, "");
+    }
 
     // save keys to json
     if ((jsonnamelen > 0) && result) {
@@ -4768,13 +4854,15 @@ static int DesfileReadFileAndPrint(DesfireContext_t *dctx,
                 PrintAndLogEx(WARNING, "File needs to be authenticated with key 0x%02x or 0x%02x but current authentication key is 0x%02x", fsettings.rAccess, fsettings.rwAccess, dctx->keyNum);
 
             if (fsettings.rAccess == 0x0f && fsettings.rwAccess == 0x0f)
-                PrintAndLogEx(WARNING, "File access denied. All read access rights is 0x0f.");
+                PrintAndLogEx(WARNING, "File access denied. All read access rights is 0x0F");
 
-            if (verbose)
-                PrintAndLogEx(INFO, "Got file type: %s. Option: %s. comm mode: %s",
-                              GetDesfireFileType(fsettings.fileType),
-                              CLIGetOptionListStr(DesfireReadFileTypeOpts, filetype),
-                              CLIGetOptionListStr(DesfireCommunicationModeOpts, fsettings.commMode));
+            if (verbose) {
+                PrintAndLogEx(INFO, _CYAN_("File type:") " %s  Option: %s  comm mode: %s",
+                            GetDesfireFileType(fsettings.fileType),
+                            CLIGetOptionListStr(DesfireReadFileTypeOpts, filetype),
+                            CLIGetOptionListStr(DesfireCommunicationModeOpts, fsettings.commMode)
+                        );
+            }
         } else {
             PrintAndLogEx(WARNING, "GetFileSettings error. Can't get file type.");
         }

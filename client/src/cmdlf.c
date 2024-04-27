@@ -289,8 +289,9 @@ int CmdLFCommandRead(const char *Cmd) {
     bool cm = arg_get_lit(ctx, 10);
     CLIParserFree(ctx);
 
-    if (g_session.pm3_present == false)
+    if (g_session.pm3_present == false) {
         return PM3_ENOTTY;
+    }
 
 #define PAYLOAD_HEADER_SIZE (12 + (3 * LF_CMDREAD_MAX_EXTRA_SYMBOLS))
     struct p {
@@ -311,6 +312,7 @@ int CmdLFCommandRead(const char *Cmd) {
     payload.keep_field_on = keep_field_on;
     payload.verbose = verbose;
     memset(payload.symbol_extra, 0, sizeof(payload.symbol_extra));
+    memset(payload.period_extra, 0, sizeof(payload.period_extra));
 
     if (add_crc_ht && (cmd_len <= 120)) {
         // Hitag 1, Hitag S, ZX8211
@@ -1535,8 +1537,12 @@ static bool check_chiptype(bool getDeviceData) {
 
     if (!getDeviceData) return retval;
 
-    save_restoreGB(GRAPH_SAVE);
-    save_restoreDB(GRAPH_SAVE);
+    //Save the state of the Graph and Demod Buffers
+    buffer_savestate_t saveState_gb = save_bufferS32(g_GraphBuffer, g_GraphTraceLen);
+    saveState_gb.offset = g_GridOffset;
+    buffer_savestate_t saveState_db = save_buffer8(g_DemodBuffer, g_DemodBufferLen);
+    saveState_db.clock = g_DemodClock;
+    saveState_db.offset = g_DemodStartIdx;
 
     //check for em4x05/em4x69 chips first
     uint32_t word = 0;
@@ -1575,8 +1581,13 @@ static bool check_chiptype(bool getDeviceData) {
 
     PrintAndLogEx(INFO, "Couldn't identify a chipset");
 out:
-    save_restoreGB(GRAPH_RESTORE);
-    save_restoreDB(GRAPH_RESTORE);
+    restore_buffer8(saveState_db, g_DemodBuffer);
+    g_DemodClock = saveState_db.clock;
+    g_DemodStartIdx = saveState_db.offset;
+
+    restore_bufferS32(saveState_gb, g_GraphBuffer);
+    g_GridOffset = saveState_gb.offset;
+    
     return retval;
 }
 
